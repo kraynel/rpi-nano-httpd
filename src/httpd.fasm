@@ -6,11 +6,6 @@
 format ELF executable                                  ;
 entry start                                            ;
 ;======================================================;
-; Is logging enabled ?                                 ;
-;------------------------------------------------------;
-LOGGING = 1                                            ;
-LOGGING2 = 0                                           ;
-;======================================================;
 ; Def                                                  ;
 ;------------------------------------------------------;
 SOCK_STREAM       = 1                                  ;
@@ -22,60 +17,13 @@ SYS_SEND          = 9                                  ;
 SYS_RECV          = 10                                 ;
 IPPROTO_TCP       = 6                                  ;   Transmission Control Protocol
 ;======================================================;
-; Print macro                                          ;
-;------------------------------------------------------;
-macro print _msg,_msglen                               ;
-{ common                                               ;
-        push      (r0)                                 ;
-        push      (r1)                                 ;
-        push      (r2)                                 ;
-        push      (r7)                                 ;
-        mov       r7, 0x4                              ;
-        mov       r0, 0x1                              ;
-        imm32     r1, _msg                             ;
-        imm32     r2, _msglen                          ;
-        swi       0x0                                  ;
-                                                       ;
-        pop       (r7)                                 ;
-        pop       (r2)                                 ;
-        pop       (r1)                                 ;
-        pop       (r0)                                 ;
-}                                                      ;
-;======================================================;
-; old tcpsend macro                                    ;
-;------------------------------------------------------;
-macro tcpsend _msg,_msglen                             ;
-{ common                                               ;
-        push      (r0)                                 ;
-        push      (r1)                                 ;
-        push      (r2)                                 ;
-        push      (r3)                                 ;
-        push      (r7)                                 ;
-        imm32     r0, clientfd                         ;
-        ldr       r0, [r0]                             ;
-        imm32     r1, _msg                             ;
-        imm32     r2, _msglen                          ;
-        mov       r3, 0                                ;
-        imm32     r7, 0x121                            ;
-        swi       0x0                                  ;
-        pop       (r7)                                 ;
-        pop       (r3)                                 ;
-        pop       (r2)                                 ;
-        pop       (r1)                                 ;
-        pop       (r0)                                 ;
-}                                                      ;
-;======================================================;
 ; old tcpsend macro                                    ;
 ;------------------------------------------------------;
 ; r0 = size to send                                    ;
 ;------------------------------------------------------;
 macro tcpsend_reg _msg                                 ;
 { common                                               ;
-        push      (r0)                                 ;
-        push      (r1)                                 ;
-        push      (r2)                                 ;
-        push      (r3)                                 ;
-        push      (r7)                                 ;
+        stmfd     sp!, {r0-r3,r7\}				   ;
         mov       r2, r0                               ;
         imm32     r0, clientfd                         ;
         ldr       r0, [r0]                             ;
@@ -83,33 +31,7 @@ macro tcpsend_reg _msg                                 ;
         mov       r3, 0                                ;
         imm32     r7, 0x121                            ;
         swi       0x0                                  ;
-        pop       (r7)                                 ;
-        pop       (r3)                                 ;
-        pop       (r2)                                 ;
-        pop       (r1)                                 ;
-        pop       (r0)                                 ;
-}                                                      ;
-;======================================================;
-; Print macro                                          ;
-;------------------------------------------------------;
-;  r0 = string size                                    ;
-;------------------------------------------------------;
-macro print_reg _msg,_msglen                           ;
-{ common                                               ;
-        push      (r0)                                 ;
-        push      (r1)                                 ;
-        push      (r2)                                 ;
-        push      (r7)                                 ;
-        mov       r2, r0                               ;
-        mov       r7, 0x4                              ;
-        mov       r0, 0x1                              ;
-        imm32     r1, _msg                             ;
-        swi       0x0                                  ;
-                                                       ;
-        pop       (r7)                                 ;
-        pop       (r2)                                 ;
-        pop       (r1)                                 ;
-        pop       (r0)                                 ;
+        ldmfd     sp!, {r0-r3,r7\}                    ;
 }                                                      ;
 include 'FasmArm.inc'                              ;
 segment readable writeable executable                  ;
@@ -117,34 +39,7 @@ segment readable writeable executable                  ;
 ; Main start                                           ;
 ;------------------------------------------------------;
 start:                                                 ;
-        print msg,msg.msg_size                         ; print start message
-;======================================================;
-; Check commamd line for port number                   ;
-;------------------------------------------------------;
-        ldmfd     sp!, {r1}                            ;
-        imm32     r0, argc                             ;
-        str       r1, [r0]                             ;
         mov       r0, 80                               ; default port number
-        cmp       r1, 1                                ;
-;======================================================;
-; If no number, use default (port 80)                  ;
-;------------------------------------------------------;
-        beq       UseDeFault                           ;
-;======================================================;
-; Convet  port number                                  ;
-;------------------------------------------------------;
-        ldmfd     sp!,{r1}                             ;
-        ldmfd     sp!,{r3}                             ;
-        mov       r4, 10                               ;
-        bl        StrToInt                             ;
-        mov       r0, r1                               ;
-        imm32     r1, portnumber                       ;
-        str       r0, [r1]                             ;
-align 4                                                ;
-UseDeFault:                                            ;
-;======================================================;
-; Store Port                                           ;
-;------------------------------------------------------;
         rev16     r0, r0                               ; byte order
         imm32     r1, sockaddr_in.sin_port             ;
         strh      r0, [r1]                             ;
@@ -166,9 +61,7 @@ UseDeFault:                                            ;
         add       r0, 1                                ; change neg to pos number
         imm32     r1, 4096                             ; We need to check because some times address is neg
         cmp       r0, r1                               ;
-        bl        Convert2Hex                          ; Get error code
-        print     print_hex_string,print_hex_string_size ;
-        print     msgE1,msgE1.msgE1_size               ; error message 1
+;        bl        Convert2Hex                          ; Get error code
         b         fin                                  ; branch exit
 align 4                                                ;
 ;======================================================;
@@ -201,9 +94,7 @@ bind:                                                  ; Ok  SOCKET(2)
         add       r0, 1                                ; change neg to pos number
         imm32     r1, 4096                             ; We need to check because some times address is neg
         cmp       r0, r1                               ;
-        bl        Convert2Hex                          ; Get error code
-        print     print_hex_string,print_hex_string_size ;
-        print     msgE2,msgE2.msgE2_size               ; error message 1
+;        bl        Convert2Hex                          ; Get error code
         b         fin                                  ; branch exit
                                                        ; Ok BIND(2)
 ;======================================================;
@@ -228,9 +119,7 @@ listen:                                                ;
         add       r0, 1                                ; change neg to pos number
         imm32     r1, 4096                             ; We need to check because some times address is neg
         cmp       r0, r1                               ;
-        bl        Convert2Hex                          ; Get error code
-        print     print_hex_string,print_hex_string_size ;
-        print     msgE3,msgE3.msgE3_size               ;  error message 1
+;        bl        Convert2Hex                          ; Get error code
         b         fin                                  ; branch exit
 align 4                                                ;
 infinity:                                              ; Ok LISTEN(2)
@@ -257,13 +146,6 @@ accept_loop:                                           ;
                                                        ;
         teq       r0, 0                                ; check for errors
         bgt       accept_ok                            ;
-if LOGGING2                                            ;
-        mvn       r0, r0                               ;
-        add       r0, 1                                ; change neg to pos number
-        bl        Convert2Hex                          ; Get error code
-        print     print_hex_string,print_hex_string_size ;
-        print     msgE4,msgE4.msgE4_size               ;  error message 1
-end if                                                 ;
         b         accept_loop                          ; branch if neg or zero
 align 4                                                ;
 ;======================================================;
@@ -305,17 +187,6 @@ recv_loop:                                             ;
         imm32     r1, recv_size                        ; get size of message
         str       r0, [r1]                             ; store it
 ;======================================================;
-; if logging2 then print buffer                        ;
-;------------------------------------------------------;
-if LOGGING2                                            ;
-        print     buffer, bufferlen                    ;
-;======================================================;
-; Next line                                            ;
-;------------------------------------------------------;
-        print     NextLine, NextLine.NextLine_size     ;
-                                                       ;
-end if                                                 ;
-;======================================================;
 ; test for file                                        ;
 ;------------------------------------------------------;
         imm32     r0, buffer                           ;
@@ -344,30 +215,15 @@ ItsSpace:                                              ;
         str       r6,[r3],4                            ;
         imm32     r6,"x.ht"                            ;
         str       r6,[r3],4                            ;
-        imm32     r6,"m"                               ;
-        strb      r6,[r3]                              ;
+        imm32     r6,"ml"                               ;
+        str       r6,[r3],2                              ;
         imm32     r3, bufferwantedfile                 ;
-        mov       r1,9                                 ;
+        mov       r1,10                                 ;
 Notjustspace:                                          ;
         mov       r4, 0                                ;
         strb      r4, [r3,r1]                          ;
         imm32     r4, offset                           ;
         str       r1, [r4]                             ;
-;======================================================;
-; Is logging enabled ?                                 ;
-;------------------------------------------------------;
-; If logging has been enabled, itll use the function   ;
-; called ntop (at the bottom of this code) to convert  ;
-; the IP address of the person who connected to the    ;
-; server into a string form and print it.              ;
-;------------------------------------------------------;
-if LOGGING                                             ;
-        imm32     r2, client_addr_ip                   ;
-        ldr       r0, [r2, 4]                          ; mov eax, dword [peeraddr+4]
-        imm32     r3, client_addr_ip_Converted         ; mov edi, buffer+bufferlen-16
-        bl        ntop                                 ; call ntop
-        print_reg   client_addr_ip_Converted           ;
-end if                                                 ;
 ;======================================================;
 ; get file info                                        ;
 ;------------------------------------------------------;
@@ -382,27 +238,8 @@ fileisnamed:                                           ;
 ;======================================================;
 ; file not found                                       ;
 ;------------------------------------------------------;
-        tcpsend   h404,h404.len                        ;
-;======================================================;
-; if logging print 404 message                         ;
-;------------------------------------------------------;
-if LOGGING                                             ;
-        print     l404,l404.len                        ;
-;======================================================;
-; Print wanted file name                               ;
-;------------------------------------------------------;
-        imm32     r2, offset                           ;
-        ldr       r2, [r2]                             ;
-        mov       r7, 0x4                              ;
-        mov       r0, 0x1                              ;
-        imm32     r1, bufferwantedfile                 ;
-                                                       ;
-        swi       0x0                                  ;
-;======================================================;
-; Next line                                            ;
-;------------------------------------------------------;
-        print     NextLine, NextLine.NextLine_size     ;
-end if                                                 ;
+		imm32     r0, h404.len                         ;
+        tcpsend_reg   h404                        ;
         b         close                                ;
                                                        ;
 ;======================================================;
@@ -425,9 +262,7 @@ openfile:                                              ;
 ;------------------------------------------------------;
         mvn       r0, r0                               ;
         add       r0, 1                                ; change neg to pos number
-        bl        Convert2Hex                          ;
-        print     print_hex_string, print_hex_string_size
-        print     fderror,fderror_len                  ;
+;        bl        Convert2Hex                          ;
         b         close                                ;
 ;======================================================;
 ; file found and ready to send                         ;
@@ -436,43 +271,23 @@ fd_ok:                                                 ;
         imm32     r1, fd                               ;
         str       r0, [r1]                             ;
 ;======================================================;
-; if logging, print 200 OK message                     ;
-;------------------------------------------------------;
-if LOGGING                                             ;
-        print     l200,l200.len                        ;
-;======================================================;
-; Print wanted file name                               ;
-;------------------------------------------------------;
-        imm32     r2, offset                           ;
-        ldr       r2, [r2]                             ;
-        mov       r7, 0x4                              ;
-        mov       r0, 0x1                              ;
-        imm32     r1, bufferwantedfile                 ;
-                                                       ;
-        swi       0x0                                  ;
-;======================================================;
-; Next line                                            ;
-;------------------------------------------------------;
-        print     NextLine, NextLine.NextLine_size     ;
-end if                                                 ;
-;======================================================;
 ; set header (eg: file size)                           ;
 ;------------------------------------------------------;
         imm32     r0, fdlen                            ;
         ldr       r0, [r0]                             ;
-        imm32     r10, c_l                             ;
-        bl        IntToStr                             ;
-        mov       r1, 13                               ;
-        strb      r1, [r10],1                          ;
-        mov       r1, 10                               ;
-        strb      r1, [r10],1                          ;
-        mov       r1, 13                               ;
-        strb      r1, [r10],1                          ;
-        mov       r1, 10                               ;
-        strb      r1, [r10],1                          ;
+;        imm32     r10, c_l                             ;
+;        bl        IntToStr                             ;
+;        mov       r1, 13                               ;
+;        strb      r1, [r10],1                          ;
+;        mov       r1, 10                               ;
+;        strb      r1, [r10],1                          ;
+;        mov       r1, 13                               ;
+;        strb      r1, [r10],1                          ;
+;        mov       r1, 10                               ;
+;        strb      r1, [r10],1                          ;
                                                        ;
-        imm32     r1, c_l                              ;
-        sub       r10, r1                              ;
+;        imm32     r1, c_l                              ;
+;        sub       r10, r1                              ;
         imm32     r0, h200.len                         ;
         add       r0, r10                              ;
        ; print     NextLine, NextLine.NextLine_size    ;
@@ -524,7 +339,6 @@ align 4                                                ;
 ; Close server and exit                                ;
 ;------------------------------------------------------;
 fin:                                                   ; exit
-        print     msgclose,msgclose.msgclose_size      ;
         mov       r0, 0x0                              ;
         mov       r7, 0x1                              ;
         swi       0x0                                  ;
@@ -533,48 +347,48 @@ fin:                                                   ; exit
 ; Converts to hex                                      ;
 ;  r0  = number ( prints 8 hex digits)                 ;
 ;------------------------------------------------------;
-align 4                                                ;
-Convert2Hex:                                           ;
-        stmfd     sp!, {r0-r12, lr}                    ;
-        imm32     r2,hex_digits                        ;
-        imm32     r3,print_hex_string                  ;
-        mov       r4,28                                ;
-align 4                                                ;
-print_hex_loop:                                        ;
-        mov       r1,r0,lsr r4                         ; Get digit n
-        and       r1,r1,0x0f                           ; mask off lower nibble
-        ldrb      r1,[r2,r1]                           ; r0 now contains a hex number,
-                                                       ; look it up in table
-        strb      r1,[r3],1                            ;
-        subs      r4,r4,4                              ;
-        bpl       print_hex_loop                       ;
-                                                       ;
-        ldmfd     sp!, {r0-r12, pc}                    ; pop & return
-align 4                                                ;
+;align 4                                                ;
+;Convert2Hex:                                           ;
+;        stmfd     sp!, {r0-r12, lr}                    ;
+;        imm32     r2,hex_digits                        ;
+;        imm32     r3,print_hex_string                  ;
+;        mov       r4,28                                ;
+;align 4                                                ;
+;print_hex_loop:                                        ;
+;        mov       r1,r0,lsr r4                         ; Get digit n
+;        and       r1,r1,0x0f                           ; mask off lower nibble
+;        ldrb      r1,[r2,r1]                           ; r0 now contains a hex number,
+;                                                       ; look it up in table
+;        strb      r1,[r3],1                            ;
+;        subs      r4,r4,4                              ;
+;        bpl       print_hex_loop                       ;
+;                                                       ;
+;        ldmfd     sp!, {r0-r12, pc}                    ; pop & return
+;align 4                                                ;
 ;======================================================;
 ; String to int                                        ;
 ; input: r3 = buffer, r4 = base (eg 10)                ;
 ; output: r1 = number                                  ;
 ;------------------------------------------------------;
-StrToInt:                                              ;
-        stmfd     sp!, {r2-r3, lr}                     ; save regs
-        eor       r1, r1                               ; zero r1 and r2
-        eor       r2, r2                               ;
-.loop:                                                 ;
-        ldrb      r2, [r3], 1                          ; load a byte
-        cmp       r2, 0                                ; check for 0
-        beq       .end                                 ; if so exit
-        mul       r1, r1, r4                           ; multiply with basic
-        sub       r2, r2, '0'                          ; sub ASCII value
-        cmp       r2, 9                                ; cmpare it to 9
-        ble       .ok                                  ; if its let or = jump to OK
-        sub       r2, 7                                ; if not sub 7 (eg: it A-F)
-.ok:                                                   ;
-        add       r1, r1, r2                           ; save it
-        b         .loop                                ; do another loop .loop
-.end:                                                  ;
-        ldmfd     sp!, {r2-r3, pc}                     ; restore regs and return.
-align 4                                                ;
+;StrToInt:                                              ;
+;        stmfd     sp!, {r2-r3, lr}                     ; save regs
+;        eor       r1, r1                               ; zero r1 and r2
+;        eor       r2, r2                               ;
+;.loop:                                                 ;
+;        ldrb      r2, [r3], 1                          ; load a byte
+;        cmp       r2, 0                                ; check for 0
+;        beq       .end                                 ; if so exit
+;        mul       r1, r1, r4                           ; multiply with basic
+;        sub       r2, r2, '0'                          ; sub ASCII value
+;        cmp       r2, 9                                ; cmpare it to 9
+;        ble       .ok                                  ; if its let or = jump to OK
+;        sub       r2, 7                                ; if not sub 7 (eg: it A-F)
+;.ok:                                                   ;
+;        add       r1, r1, r2                           ; save it
+;        b         .loop                                ; do another loop .loop
+;.end:                                                  ;
+;        ldmfd     sp!, {r2-r3, pc}                     ; restore regs and return.
+;align 4                                                ;
 ;======================================================;
 ; write number to buffer                               ;
 ;------------------------------------------------------;
@@ -748,38 +562,23 @@ ntop:                                                  ;
 ; ---------------------------------------------------- ;
 ; put char = r0                                        ;
 ; ---------------------------------------------------- ;
-OutChar:                                               ;
-        stmfd       sp!, {r0-r2, r7, lr}               ; Store registers
-        mov         r1, sp                             ; r1  address
-        mov         r0, 1                              ; r0  stdout
-        mov         r2, r0                             ; r2  length
-        mov         r7, 4                      ;
-        swi         0                                  ;
-        ldmfd       sp!, {r0-r2, r7, pc}               ; Restore registers and return
+;OutChar:                                               ;
+;        stmfd       sp!, {r0-r2, r7, lr}               ; Store registers
+;        mov         r1, sp                             ; r1  address
+;        mov         r0, 1                              ; r0  stdout
+;        mov         r2, r0                             ; r2  length
+;        mov         r7, 4                      ;
+;        swi         0                                  ;
+;        ldmfd       sp!, {r0-r2, r7, pc}               ; Restore registers and return
 ;======================================================;
 ; data                                                 ;
 ;------------------------------------------------------;
 segment readable writeable                             ;
-if LOGGING                                             ;
-align 4                                                ;
-l404 db ' - 404 NF - '                                 ;
-.len = $ - l404                                        ;
-align 4                                                ;
-l200 db ' - 200 OK - '                                 ;
-.len = $ - l200                                        ;
-end if                                                 ;
 align 4                                                ;
 ipnumber dw     0xfefefefe                             ;
 align 4                                                ;
 prt_digits:                                            ;
               db "0123456789"                          ;
-align 4                                                ;
-hex_digits:                                            ;
-                    db "0123456789ABCDEF"              ;
-align 4                                                ;
-print_hex_string:                                      ;
-                    db "12345678", 0xa                 ; storage for 8 digit hex string,
-print_hex_string_size = $-print_hex_string             ;
 align 4                                                ;
 client_addr_ip: rb 16                                  ;
 sixteen dw 16                                          ;
@@ -794,9 +593,6 @@ align 4                                                ;
 client_addr   dw sockaddr_in                           ;
 addrlen       dw dest_size                             ;
 align 4                                                ;
-argc          dw 0                                     ;
-portnumber    dw 0                                     ;
-align 4                                                ;
 recv_size     dw 0                                     ;
 sockfd        dw 0                                     ;
 fd            dw 0                                     ;
@@ -804,65 +600,11 @@ fdlen         dw 0                                     ;
 clientfd      dw 0                                     ;
 offset        dw 0                                     ;
 align 4                                                ;
-cArray        dw 0                                     ;
-              dw 0                                     ;
-              dw 0                                     ;
-              dw 0                                     ;
-              dw 0                                     ;
-align 4                                                ;
-;send 'array'.                                         ;
-sArray        dw 0                                     ;
-              dw 0                                     ;
-              dw 0                                     ;
-              dw 0                                     ;
-align 4                                                ;
-indexfile     db ".index.html",0                       ;
-align 4                                                ;
-NextLine      db " " ,0xa                              ; Next line
-.NextLine_size = $-NextLine                            ;
-align 4                                                ;
-msgreceved    db " Server receved data" ,0xa           ; Message
-.msgreceved_size = $-msgreceved                        ;
-align 4                                                ;
-msg    db " Server started..." ,0xa                    ; Message
-.msg_size = $-msg                                      ;
-align 4                                                ;
-msgclose db " Server closed", 0xa                      ; Close
-.msgclose_size = $-msgclose                            ;
-align 4                                                ;
-msgsent db " Sent file", 0xa                           ; Send
-.msgsent_size = $-msgsent                              ;
-                                                       ;
-msgE1  db " socket() failed" ,0xa                      ; Err1
-.msgE1_size = $-msgE1                                  ;
-align 4                                                ;
-msgE2  db " bind() failed", 0xa                        ; Err2
-.msgE2_size = $-msgE2                                  ;
-align 4                                                ;
-msgE3  db " listen() failed", 0xa                      ; Err3
-.msgE3_size = $-msgE3                                  ;
-align 4                                                ;
-msgE4  db " accept() failed", 0xa                      ; Err4
-.msgE4_size = $-msgE4                                  ;
-align 4                                                ;
-msgE5  db " send() failed", 0xa                        ; Err5
-.msgE5_size = $-msgE5                                  ;
-align 4                                                ;
-fderror db " ERROR 1", 0xa                             ;
-fderror_len = $- fderror                               ;
-align 4                                                ;
-fderror2 db " ERROR 2", 0xa                            ;
-fderror_len2 = $- fderror2                             ;
-align 4                                                ;
-h404 db 'HTTP/1.0 404 Not Found',13,10,13,10,'<HTML><HEAD><TITLE>404 Not Found</TITLE></HEAD><BODY><H1>File Not Found</H1></BODY></HTML>',10,13
+h404 db 'HTTP/1.0 404 Not Found',13,10,13,10,'',10,13
 .len = $ - h404                                        ;
 align 4                                                ;
-h200 db  'HTTP/1.0 200 OK',13,10                       ;
-     db  'Server: DexServer',13,10                     ;
-     db  'Content-Length: '                            ;
+h200 db  'HTTP/1.0 200 OK',13,10,13,10                 ;
 .len = $ - h200                                        ;
-align 4                                                ;
-c_l  db  '                                            ';
 align 4                                                ;
 stat  rb 88                                            ;
 align 4                                                ;
@@ -870,6 +612,4 @@ buffer  rb 512                                         ;
 bufferlen = $ - buffer                                 ;
 align 4                                                ;
 bufferwantedfile  rb 512                               ;
-align 4                                                ;
-client_addr_ip_Converted  rb 16                        ;
-align 4                                                ;                                             
+align 4                                                ;                                        
